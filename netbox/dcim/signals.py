@@ -5,7 +5,7 @@ from django.dispatch import receiver
 
 from .choices import CableEndChoices, LinkStatusChoices
 from .models import (
-    Cable, CablePath, CableTermination, Device, FrontPort, PathEndpoint, PowerPanel, Rack, Location, VirtualChassis,
+    Cable, CablePath, CableTermination, Device, FrontPort, PathEndpoint, PowerPanel, Rack, RearPort, Location, VirtualChassis,
 )
 from .models.cables import trace_paths
 from .utils import create_cablepath, rebuild_paths
@@ -123,7 +123,23 @@ def nullify_connected_endpoints(instance, **kwargs):
     model = instance.termination_type.model_class()
     model.objects.filter(pk=instance.termination_id).update(cable=None, cable_end='')
 
-    for cablepath in CablePath.objects.filter(_nodes__contains=instance.cable):
+    # First try to find paths that contain the cable
+    cablepaths = CablePath.objects.filter(_nodes__contains=instance.cable)
+
+    # If the cable is not on any paths, and we terminate on a rear port with a single position, find paths on the corresponding front port
+    if len(cablepaths) == 0 and isinstance(instance.termination, RearPort) and instance.termination.positions == 1:
+        front_ports = FrontPort.objects.filter(
+                        rear_port_id=instance.termination.pk,
+                        rear_port_position=1
+                    )
+        if len(front_ports) == 1:
+            cablepaths = CablePath.objects.filter(_nodes__contains=front_ports[0])
+    # If the cable is not on any paths, and we terminate on a front port that has a rear port with a single position, find paths on the corresponding rear port
+    elif len(cablepaths) == 0 and isinstance(instance.termination, FrontPort) and instance.termination.rear_port.positions == 1:
+        cablepaths = CablePath.objects.filter(_nodes__contains=instance.termination.rear_port)
+
+    # Re-trace all cable paths
+    for cablepath in cablepaths:
         # Remove the deleted CableTermination if it's one of the path's originating nodes
         if instance.termination in cablepath.origins:
             cablepath.origins.remove(instance.termination)
