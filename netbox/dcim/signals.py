@@ -82,14 +82,8 @@ def update_connected_endpoints(instance, created, raw=False, **kwargs):
 
     # Update cable paths if new terminations have been set
     if instance._terminations_modified:
-        a_terminations = []
-        b_terminations = []
-        for t in instance.terminations.all():
-            if t.cable_end == CableEndChoices.SIDE_A:
-                a_terminations.append(t.termination)
-            else:
-                b_terminations.append(t.termination)
-        for nodes in [a_terminations, b_terminations]:
+        # Use the instance properties to avoid caching, which causes issues with api PATCH operations
+        for nodes in [instance.a_terminations, instance.b_terminations]:
             # Examine type of first termination to determine object type (all must be the same)
             if not nodes:
                 continue
